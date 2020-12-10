@@ -1,0 +1,99 @@
+#!/bin/bash
+
+# OpenEEF runtime
+# by: Ari Stehney
+
+# Help screen
+function help_screen {
+    echo ":"
+    echo ": OpenEEF Runtime"
+    echo ": by: Ari Stehney"
+    echo ":"
+    echo ": usage: effrt <package filename> <package args>"
+    echo ': package integration: #!/etc/eef/bin/eefrt'
+    echo ":"
+}
+
+if [ -f "$1" ]
+    then
+        :
+    else
+        help_screen
+        exit
+fi
+
+
+# Runtime code
+DEPTRIGGER=0
+
+function parse_yaml {
+   local prefix=$2
+   local s='[[:space:]]*' w='[a-zA-Z0-9_]*' fs=$(echo @|tr @ '\034')
+   sed -ne "s|^\($s\):|\1|" \
+        -e "s|^\($s\)\($w\)$s:$s[\"']\(.*\)[\"']$s\$|\1$fs\2$fs\3|p" \
+        -e "s|^\($s\)\($w\)$s:$s\(.*\)$s\$|\1$fs\2$fs\3|p"  $1 |
+   awk -F$fs '{
+      indent = length($1)/2;
+      vname[indent] = $2;
+      for (i in vname) {if (i > indent) {delete vname[i]}}
+      if (length($3) > 0) {
+         vn=""; for (i=0; i<indent; i++) {vn=(vn)(vname[i])("_")}
+         printf("%s%s%s=\"%s\"\n", "'$prefix'",vn, $2, $3);
+      }
+   }'
+}
+
+function add_repo_sum {
+    local sum="$(md5sum "$1" | awk '{ print $1 }')"
+    if [ -d "/etc/eef" ] 
+        then
+            if [ -f "/etc/eef/knownpkgs" ]
+                then
+                    if grep -Fxq "$(md5sum "$1" | awk '{ print $1 }')" /etc/eef/knownpkgs
+                      then
+                        :
+                      else
+                        echo "$sum" | tee -a /etc/eef/knownpkgs > /dev/null
+                        DEPTRIGGER=2
+                    fi
+                else
+                    echo "$sum" | tee /etc/eef/knownpkgs > /dev/null
+                    DEPTRIGGER=2
+            fi       
+        else
+            echo "EEF storage directory does not exist! Skipping repo MD5..." 
+    fi
+}
+
+# Remove signiture and pipe to tmp
+export MPATH="$(pwd)"
+mkdir .tmp_eef/ && cd .tmp_eef/
+
+tail -n +2 "../$1" | dd bs=13 skip=1 if="../$1" status=none | cpio -idv 2> /dev/null
+echo "#!/bin/bash" > initargs.sh
+parse_yaml init >> initargs.sh
+chmod +x initargs.sh
+source initargs.sh
+add_repo_sum "../$1"
+
+if [ "$DEPTRIGGER" = "2" ]; then
+      # Package Manager integration
+      if [ -z ${dependencies_apt+x} ]; then :  ; else echo "Installing apt dependencies..." ; echo $(sudo apt update; DEBIAN_FRONTEND=noninteractive sudo apt -y install $dependencies_apt) > /dev/null; fi # apt deps
+      if [ -z ${dependencies_snap+x} ]; then : ; else echo "Installing snap dependencies..."; echo $(sudo snap install $dependencies_snap) > /dev/null; fi # snap deps
+      if [ -z ${dependencies_opkg+x} ]; then : ; else echo "Installing opkg dependencies..."; echo $(sudo opkg update; sudo opkg install $dependencies_snap) > /dev/null; fi # snap deps
+fi
+
+if [ ! -z "$EEF_TARGET" ]
+then
+    cd data
+    modename="init_${EEF_TARGET}"
+    bash data/${!modename} ${@:2}
+    cd  ../
+else
+    cd data
+    bash $init_default ${@:2}
+    cd ../
+fi
+
+cd "$(echo $MPATH)"
+rm -r .tmp_eef/

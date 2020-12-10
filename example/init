@@ -1,0 +1,11 @@
+global:
+  icon: "icon.png"
+  name: "Test App"
+  author: "Ari Stehney"
+
+dependencies:
+  apt: "python3 bash"
+
+init:
+  default: "inits.sh"
+  noninteractive: "inits-ni.sh"

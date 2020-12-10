@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# OpenEEF builder
+# by: Ari Stehney
+
+# Help Screen
+function help_screen {
+    echo ":"
+    echo ": OpenEEF Package Builder"
+    echo ": by: Ari Stehney"
+    echo ":"
+    echo ": usage: effmake <package directory> <ouput file name>"
+    echo ":"
+}
+
+argnums=$(echo "$@" |awk '{for(i=0;i<=NF;i++); print i-1 }')
+if [ "$argnums" = "2" ]
+    then
+        if [ -d "$1" ]
+            then
+                :
+            else
+                help_screen
+                exit
+        fi
+    else
+        help_screen
+        exit
+fi
+
+# Open template folder
+cd $1
+
+# Create package
+echo "Creating package..."
+chmod +x init
+echo "#!/etc/eef/bin/eefrt" > ../$2
+echo "Signing package..."
+printf "\x6F\x70\x65\x6E\x65\x65\x66\x2D\x31\x2E\x30\x00\x00" >> ../$2
+find * | cpio -ov >> ../$2
+chmod +x ../$2
+echo "Cleaning up..."
+
+# Clean up tmp
+cd ../

@@ -1,0 +1,65 @@
+#!/bin/bash
+
+# OpenEEF metadata helper
+# by: Ari Stehney
+
+# Help screen
+function help_screen {
+    echo ":"
+    echo ": OpenEEF Runtime"
+    echo ": by: Ari Stehney"
+    echo ":"
+    echo ": usage: effrt <package filename> <package args>"
+    echo ': package integration: #!/etc/eef/bin/eefrt'
+    echo ":"
+}
+
+if [ -f "$2" ]
+    then
+        :
+    else
+        help_screen
+        exit
+fi
+
+# Yaml parser
+function parse_yaml {
+   local prefix=$2
+   local s='[[:space:]]*' w='[a-zA-Z0-9_]*' fs=$(echo @|tr @ '\034')
+   sed -ne "s|^\($s\):|\1|" \
+        -e "s|^\($s\)\($w\)$s:$s[\"']\(.*\)[\"']$s\$|\1$fs\2$fs\3|p" \
+        -e "s|^\($s\)\($w\)$s:$s\(.*\)$s\$|\1$fs\2$fs\3|p"  $1 |
+   awk -F$fs '{
+      indent = length($1)/2;
+      vname[indent] = $2;
+      for (i in vname) {if (i > indent) {delete vname[i]}}
+      if (length($3) > 0) {
+         vn=""; for (i=0; i<indent; i++) {vn=(vn)(vname[i])("_")}
+         printf("%s%s%s=\"%s\"\n", "'$prefix'",vn, $2, $3);
+      }
+   }'
+}
+
+# Remove signiture and pipe to tmp
+export MPATH="$(pwd)"
+mkdir .tmp_eef/ && cd .tmp_eef/
+
+tail -n +2 "../$2" | dd bs=13 skip=1 if="../$2" status=none | cpio -idv 2> /dev/null
+echo "#!/bin/bash" > initargs.sh
+parse_yaml init >> initargs.sh
+chmod +x initargs.sh
+source initargs.sh
+
+# Modes
+if [ "$1" = "-t" ]; then    
+    attribname="global_$3"
+    echo ${!attribname}
+fi
+
+if [ "$1" = "-f" ]; then
+    attribname="global_$3"
+    cat data/${!attribname}
+fi
+
+cd "$(echo $MPATH)"
+rm -r .tmp_eef/
